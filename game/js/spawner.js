@@ -1,8 +1,56 @@
 "use strict";
 
-import { TAU, normalizeAngle } from './math.js';
+import { TAU, normalizeAngle, angleDiff } from './math.js';
 import { ObstacleType } from './obstacles.js';
 import { patterns, randomizeGapAngles, resetLastGap } from './pattern-library.js';
+
+// Safety margin — player shouldn't need pixel-perfect timing
+const SAFETY = 0.85;
+
+/**
+ * Find the shortest angular travel between two sets of gaps, accounting
+ * for gap widths and player hitbox.
+ *
+ * Returns { dist, idxA, idxB } where dist is the minimum angular distance
+ * the player's center must travel, and idxA/idxB are the best gap pair.
+ */
+function shortestGapTravel(anglesA, halfWidthA, anglesB, halfWidthB, hitbox) {
+  let best = Infinity;
+  let idxA = 0, idxB = 0;
+
+  for (let a = 0; a < anglesA.length; a++) {
+    for (let b = 0; b < anglesB.length; b++) {
+      const raw = Math.abs(angleDiff(anglesA[a], anglesB[b]));
+      // Player is safe within (halfWidth + hitbox) of gap center on each side
+      const effective = Math.max(0, raw - (halfWidthA + hitbox) - (halfWidthB + hitbox));
+      if (effective < best) {
+        best = effective;
+        idxA = a;
+        idxB = b;
+      }
+    }
+  }
+
+  return { dist: best, idxA, idxB };
+}
+
+/**
+ * Nudge gapAngles[idx] toward targetAngle until the travel distance
+ * is within the player's budget.
+ */
+function nudgeGap(gapAngles, idx, targetAngle, maxTravel, halfWidthSrc, halfWidthDst, hitbox) {
+  const current = gapAngles[idx];
+  const diff = angleDiff(current, targetAngle);
+  const rawDist = Math.abs(diff);
+  const effectiveDist = Math.max(0, rawDist - (halfWidthSrc + hitbox) - (halfWidthDst + hitbox));
+
+  if (effectiveDist <= maxTravel) return; // already reachable
+
+  // Move gap toward target so effective distance = maxTravel
+  const overshoot = effectiveDist - maxTravel;
+  const dir = diff > 0 ? 1 : -1;
+  gapAngles[idx] = normalizeAngle(current + dir * overshoot);
+}
 
 export class Spawner {
   constructor(pool, arena, adapter, player) {
@@ -17,6 +65,9 @@ export class Spawner {
     this._chartIdx = 0;
     this._secsPerBeat = 0.5;
     this._pendingSpawns = [];
+
+    // Track last gap-based obstacle for reachability validation
+    this._lastGapInfo = null; // { angles, halfWidth, beat }
 
     this._onRow = this._onRow.bind(this);
     adapter.on('row', this._onRow);
@@ -52,7 +103,6 @@ export class Spawner {
       const ev = this.chart.events[this._chartIdx];
       if (ev.beat > this.beatCount) break;
 
-      // Macro expansion: spiral sequences
       if (ev.macro === 'spiral') {
         this._spawnSpiral(ev);
       } else {
@@ -71,9 +121,9 @@ export class Spawner {
     const speed = travelDist / Math.max(0.1, travelTime);
 
     const playerAngle = this.player ? this.player.angle : null;
-    const maxReach = this.player
-      ? this.player.angularSpeed * travelTime
-      : null;
+    const angularSpeed = this.player ? this.player.angularSpeed : TAU * 0.75;
+    const hitbox = this.player ? this.player.hitboxHalfArc : 0.05;
+    const maxReach = angularSpeed * travelTime;
 
     const obs = this.pool.acquire(pat.type);
     obs.radius = this.arena.outerRadius;
@@ -83,7 +133,6 @@ export class Spawner {
     obs.pressure = pat.pressure || false;
 
     if (pat.type === ObstacleType.GAP_WALL) {
-      // Fixed-angle patterns (alt-lanes) bypass randomization
       if (pat._fixedGapAngle != null) {
         obs.gapAngles = [pat._fixedGapAngle];
       } else {
@@ -91,8 +140,11 @@ export class Spawner {
       }
       obs.gapHalfWidth = pat.gapHalfWidth || 0.3;
 
+      // --- Reachability check against previous gap-obstacle ---
+      this._validateReachability(obs.gapAngles, obs.gapHalfWidth, angularSpeed, hitbox);
+
       // Schedule paired second wall if defined
-      if (pat._paired) {
+      if (pat._paired && !(overrides && overrides._skipPair)) {
         const shiftedAngle = normalizeAngle(
           obs.gapAngles[0] + (pat._pairAngleShift || Math.PI)
         );
@@ -101,16 +153,30 @@ export class Spawner {
           pattern: patternName,
           overrides: {
             gapAngles: [shiftedAngle],
-            // Clear paired flag so second wall doesn't chain infinitely
             _skipPair: true
           }
         });
       }
 
+      // Update tracker
+      this._lastGapInfo = {
+        angles: obs.gapAngles.slice(),
+        halfWidth: obs.gapHalfWidth,
+        beat: this.beatCount
+      };
+
     } else if (pat.type === ObstacleType.ROTATING_GATE) {
       obs.gapAngles = randomizeGapAngles(pat.gaps || 1, undefined, playerAngle, maxReach);
       obs.gapHalfWidth = pat.gapHalfWidth || 0.4;
       obs.gateRotationSpeed = pat.gateRotationSpeed || TAU * 0.1;
+
+      this._validateReachability(obs.gapAngles, obs.gapHalfWidth, angularSpeed, hitbox);
+
+      this._lastGapInfo = {
+        angles: obs.gapAngles.slice(),
+        halfWidth: obs.gapHalfWidth,
+        beat: this.beatCount
+      };
 
     } else if (pat.type === ObstacleType.ORBIT_BLOCKER) {
       obs.radius = this.arena.orbitRadius;
@@ -125,6 +191,14 @@ export class Spawner {
       obs.safeAngles = randomizeGapAngles(pat.safeZones || 1, undefined, playerAngle, maxReach);
       obs.safeHalfWidth = pat.safeHalfWidth || 0.3;
 
+      this._validateReachability(obs.safeAngles, obs.safeHalfWidth, angularSpeed, hitbox);
+
+      this._lastGapInfo = {
+        angles: obs.safeAngles.slice(),
+        halfWidth: obs.safeHalfWidth,
+        beat: this.beatCount
+      };
+
     } else if (pat.type === ObstacleType.SWEEP_BEAM) {
       obs.beamAngle = Math.random() * Math.PI * 2;
       obs.beamAngularSpeed = pat.beamAngularSpeed || 1;
@@ -132,7 +206,6 @@ export class Spawner {
     }
 
     if (overrides) {
-      // Apply overrides but respect _skipPair to prevent infinite chaining
       if (overrides._skipPair) {
         delete overrides._skipPair;
       }
@@ -140,7 +213,39 @@ export class Spawner {
     }
   }
 
-  /** Expand a spiral macro into a sequence of staggered gap-walls */
+  /**
+   * Check if the new obstacle's gaps are reachable from the previous
+   * obstacle's gaps within the available time. If not, nudge the
+   * closest gap of the new obstacle to make it reachable.
+   */
+  _validateReachability(newAngles, newHalfWidth, angularSpeed, hitbox) {
+    if (!this._lastGapInfo) return; // first obstacle — already validated vs player
+
+    const prev = this._lastGapInfo;
+    const deltaBeat = this.beatCount - prev.beat;
+    if (deltaBeat <= 0) return;
+
+    const timeAvailable = deltaBeat * this._secsPerBeat;
+    const maxTravel = angularSpeed * timeAvailable * SAFETY;
+
+    const { dist, idxA, idxB } = shortestGapTravel(
+      prev.angles, prev.halfWidth,
+      newAngles, newHalfWidth,
+      hitbox
+    );
+
+    if (dist <= maxTravel) return; // reachable — all good
+
+    // Not reachable — nudge the new gap toward the closest previous gap
+    nudgeGap(
+      newAngles, idxB,
+      prev.angles[idxA],
+      maxTravel,
+      prev.halfWidth, newHalfWidth,
+      hitbox
+    );
+  }
+
   _spawnSpiral(ev) {
     const steps = ev.steps || 5;
     const interval = ev.beatInterval || 2;
@@ -165,6 +270,7 @@ export class Spawner {
     this.rowCount = 0;
     this._chartIdx = 0;
     this._pendingSpawns.length = 0;
+    this._lastGapInfo = null;
     resetLastGap();
   }
 
