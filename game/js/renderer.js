@@ -13,7 +13,7 @@ export class Renderer {
     this.effects = effects;
   }
 
-  draw(state, player, pool, score, alpha) {
+  draw(state, player, pool, score, alpha, extras) {
     const c = this.ctx2d;
     const dpr = this.viewport.dpr;
     const w = this.viewport.width * dpr;
@@ -137,7 +137,7 @@ export class Renderer {
     }
 
     // === Layer 3: UI Overlays ===
-    this._drawUI(c, state, score);
+    this._drawUI(c, state, score, extras);
 
     c.restore();
   }
@@ -301,15 +301,15 @@ export class Renderer {
     return arcs;
   }
 
-  _drawUI(c, state, score) {
+  _drawUI(c, state, score, extras) {
     const w = this.viewport.width;
     const h = this.viewport.height;
+    const pal = this.palette;
 
     c.textAlign = 'center';
     c.textBaseline = 'middle';
 
     if (state === 'MENU') {
-      // Title
       c.font = 'bold 42px monospace';
       c.fillStyle = '#fff';
       c.fillText('PULSEHEX', w / 2, h * 0.3);
@@ -320,7 +320,10 @@ export class Renderer {
 
       c.font = '13px monospace';
       c.fillStyle = 'rgba(255,255,255,0.3)';
-      c.fillText('Arrow keys / A-D or touch to move', w / 2, h * 0.67);
+      c.fillText('Touch / drag or arrow keys to steer', w / 2, h * 0.67);
+
+    } else if (state === 'TRACK_SELECT') {
+      this._drawTrackSelect(c, w, h, extras, pal);
 
     } else if (state === 'LOADING') {
       c.font = '20px monospace';
@@ -328,7 +331,6 @@ export class Renderer {
       c.fillText('LOADING...', w / 2, h / 2);
 
     } else if (state === 'PLAYING') {
-      // Score top center
       c.font = 'bold 24px monospace';
       c.fillStyle = '#fff';
       c.fillText(Math.floor(score.displayScore).toString(), w / 2, 40);
@@ -337,6 +339,13 @@ export class Renderer {
         c.font = '14px monospace';
         c.fillStyle = 'rgba(255,200,50,0.8)';
         c.fillText('x' + score.multiplier.toFixed(2), w / 2, 62);
+      }
+
+      // Track name small at bottom
+      if (extras && extras.currentTrack) {
+        c.font = '11px monospace';
+        c.fillStyle = 'rgba(255,255,255,0.25)';
+        c.fillText(extras.currentTrack.title, w / 2, h - 20);
       }
 
     } else if (state === 'DEAD') {
@@ -360,7 +369,72 @@ export class Renderer {
 
       c.font = '18px monospace';
       c.fillStyle = 'rgba(255,255,255,0.6)';
-      c.fillText('TAP TO RETRY', w / 2, h * 0.58);
+      c.fillText('TAP TO RETRY', w / 2, h * 0.55);
+
+      c.font = '13px monospace';
+      c.fillStyle = 'rgba(255,255,255,0.3)';
+      c.fillText('ESC for track select', w / 2, h * 0.62);
     }
+  }
+
+  _drawTrackSelect(c, w, h, extras, pal) {
+    if (!extras || !extras.tracks) return;
+    const trackList = extras.tracks;
+    const sel = extras.selectedTrackIdx || 0;
+
+    // Title
+    c.font = 'bold 28px monospace';
+    c.fillStyle = '#fff';
+    c.fillText('SELECT TRACK', w / 2, h * 0.12);
+
+    // Difficulty stars helper
+    const stars = (n) => '\u2605'.repeat(n) + '\u2606'.repeat(3 - n);
+
+    // Track list
+    const listTop = h * 0.25;
+    const rowH = h * 0.10;
+
+    for (let i = 0; i < trackList.length; i++) {
+      const t = trackList[i];
+      const y = listTop + i * rowH;
+      const isSelected = i === sel;
+
+      // Selection highlight
+      if (isSelected) {
+        c.fillStyle = 'rgba(255,255,255,0.08)';
+        c.fillRect(w * 0.05, y - rowH * 0.4, w * 0.9, rowH * 0.85);
+
+        // Side indicator
+        c.fillStyle = pal.rgb(pal.player);
+        c.fillRect(w * 0.05, y - rowH * 0.4, 3, rowH * 0.85);
+      }
+
+      // Track title
+      c.textAlign = 'left';
+      c.font = isSelected ? 'bold 16px monospace' : '15px monospace';
+      c.fillStyle = isSelected ? '#fff' : 'rgba(255,255,255,0.6)';
+      c.fillText(t.title, w * 0.10, y - 4);
+
+      // Mood + difficulty
+      c.font = '11px monospace';
+      c.fillStyle = isSelected ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.3)';
+      c.fillText(t.mood + '  ' + stars(t.difficulty), w * 0.10, y + 14);
+
+      // Auto/curated badge
+      c.textAlign = 'right';
+      c.font = '10px monospace';
+      c.fillStyle = t.chart
+        ? 'rgba(100,255,150,0.5)'
+        : 'rgba(255,200,80,0.5)';
+      c.fillText(t.chart ? 'CURATED' : 'AUTO', w * 0.92, y - 4);
+
+      c.textAlign = 'center';
+    }
+
+    // Instructions
+    c.textAlign = 'center';
+    c.font = '13px monospace';
+    c.fillStyle = 'rgba(255,255,255,0.35)';
+    c.fillText('Tap track or UP/DOWN + ENTER', w / 2, h * 0.88);
   }
 }

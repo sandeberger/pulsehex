@@ -14,16 +14,23 @@ import { Renderer } from './renderer.js';
 import { Palette } from './palette.js';
 import { Effects } from './effects.js';
 import { Score } from './score.js';
-import { track01 } from './charts/track01.js';
+import { tracks } from './tracks.js';
+import { generateChart } from './chart-generator.js';
 
 // --- Constants ---
 const FIXED_DT = 1 / 120; // 120 Hz logic
 const MAX_FRAME_DT = 0.05; // 50ms cap
 const DEAD_DURATION = 0.8;
-const RESULT_DELAY = 0.6;
 
 // --- State machine ---
-const State = { MENU: 'MENU', LOADING: 'LOADING', PLAYING: 'PLAYING', DEAD: 'DEAD', RESULT: 'RESULT' };
+const State = {
+  MENU: 'MENU',
+  TRACK_SELECT: 'TRACK_SELECT',
+  LOADING: 'LOADING',
+  PLAYING: 'PLAYING',
+  DEAD: 'DEAD',
+  RESULT: 'RESULT'
+};
 
 // --- Game globals ---
 let state = State.MENU;
@@ -34,6 +41,7 @@ let lastTime = 0;
 let deadTimer = 0;
 let sectionIdx = 0;
 let profile = null;
+let selectedTrackIdx = 0;
 
 // --- Bootstrap ---
 window.addEventListener('DOMContentLoaded', init);
@@ -58,7 +66,7 @@ function init() {
   window.addEventListener('resize', () => arena.updateFromViewport(viewport));
 
   // Listen for pattern changes to switch palette sections
-  adapter.on('patternChange', (data) => {
+  adapter.on('patternChange', () => {
     sectionIdx++;
     palette.setSection(sectionIdx);
     score.addSectionClear();
@@ -69,46 +77,94 @@ function init() {
     effects.triggerBeat();
   });
 
-  // Song end → keep playing (loop)
-  adapter.on('songEnd', () => {
-    // Song loops automatically in the player
-  });
-
-  // Start/restart on input
-  window.addEventListener('keydown', onAction);
-  window.addEventListener('touchstart', onAction, { passive: false });
-  window.addEventListener('click', onAction);
+  // Input handlers
+  window.addEventListener('keydown', onKeyAction);
+  window.addEventListener('touchstart', onTapAction, { passive: false });
+  window.addEventListener('click', onTapAction);
 
   // Kick off loop
   lastTime = performance.now() / 1000;
   requestAnimationFrame(frame);
 }
 
-function onAction(e) {
+// --- Input handling per state ---
+
+function onKeyAction(e) {
   if (state === State.MENU) {
     e.preventDefault();
-    startLoading();
+    state = State.TRACK_SELECT;
+  } else if (state === State.TRACK_SELECT) {
+    if (e.code === 'ArrowUp' || e.code === 'KeyW') {
+      e.preventDefault();
+      selectedTrackIdx = (selectedTrackIdx - 1 + tracks.length) % tracks.length;
+    } else if (e.code === 'ArrowDown' || e.code === 'KeyS') {
+      e.preventDefault();
+      selectedTrackIdx = (selectedTrackIdx + 1) % tracks.length;
+    } else if (e.code === 'Enter' || e.code === 'Space') {
+      e.preventDefault();
+      startLoading(tracks[selectedTrackIdx]);
+    }
+  } else if (state === State.RESULT) {
+    if (e.code === 'Escape' || e.code === 'KeyQ') {
+      e.preventDefault();
+      state = State.TRACK_SELECT;
+    } else {
+      e.preventDefault();
+      restartGame();
+    }
+  }
+}
+
+function onTapAction(e) {
+  if (state === State.MENU) {
+    e.preventDefault();
+    state = State.TRACK_SELECT;
+  } else if (state === State.TRACK_SELECT) {
+    e.preventDefault();
+    handleTrackSelectTap(e);
   } else if (state === State.RESULT) {
     e.preventDefault();
     restartGame();
   }
 }
 
-async function startLoading() {
+function handleTrackSelectTap(e) {
+  // Figure out which track was tapped based on Y position
+  const y = e.clientY || (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+  const h = viewport.height;
+  const listTop = h * 0.25;
+  const rowHeight = h * 0.10;
+
+  const idx = Math.floor((y - listTop) / rowHeight);
+  if (idx >= 0 && idx < tracks.length) {
+    selectedTrackIdx = idx;
+    startLoading(tracks[selectedTrackIdx]);
+  }
+}
+
+// --- Loading ---
+
+let currentTrack = null;
+
+async function startLoading(track) {
   state = State.LOADING;
+  currentTrack = track;
   try {
     await adapter.init();
-    await adapter.loadFromUrl(track01.modFile);
+    await adapter.loadFromUrl(track.modFile);
 
     // Pre-analyze
     profile = analyzer.analyze(adapter.mod);
 
-    spawner.loadChart(track01);
+    // Use handcoded chart if available, otherwise auto-generate
+    const chart = track.chart || generateChart(profile, track.modFile);
+    spawner.loadChart(chart);
+
     state = State.PLAYING;
     adapter.play();
   } catch (err) {
     console.error('Failed to load MOD:', err);
-    state = State.MENU;
+    state = State.TRACK_SELECT;
   }
 }
 
@@ -185,5 +241,5 @@ function die() {
 }
 
 function render(alpha) {
-  renderer.draw(state, player, pool, score, alpha);
+  renderer.draw(state, player, pool, score, alpha, { tracks, selectedTrackIdx, currentTrack });
 }
