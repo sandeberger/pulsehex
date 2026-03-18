@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ProTracker.JS v2 — Editor</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<div id="monitor">
+<div class="screen">
+<div class="tracker-ui">
+
+<!-- TOP BAR -->
+<div class="top-bar">
+  <div class="logo"><span class="pro">PRO</span>TRACKER<span class="js">.JS</span> <span style="font-size:11px;color:#446">v2</span></div>
+  <input type="text" id="songTitleInput" value="NEW MODULE" maxlength="20" spellcheck="false">
+  <div id="statusMsg">READY</div>
+</div>
+
+<!-- INFO AREA -->
+<div class="info-area">
+  <!-- Samples Column -->
+  <div class="samples-col">
+    <div class="panel" style="flex:1">
+      <h3>SAMPLES <span class="badge" id="currentSampleNum">01</span></h3>
+      <div id="sampleList"></div>
+    </div>
+    <div class="sample-editor">
+      <h3>SAMPLE EDITOR</h3>
+      <input type="text" class="sample-name-input" id="sampleNameInput" maxlength="22" placeholder="Sample name..." spellcheck="false">
+      <div class="sample-info">
+        <span>LEN: <span class="val" id="smpLenD">0</span></span>
+        <span>RATE: <span class="val" id="smpRateD">16726</span>Hz</span>
+        <span>LOOP: <span class="val" id="smpLoopD">OFF</span></span>
+      </div>
+      <div class="waveform-box" id="waveformBox">
+        <canvas id="waveformCanvas" width="300" height="42"></canvas>
+      </div>
+      <div class="smp-controls">
+        <label>VOL:<input type="number" id="smpVol" min="0" max="64" value="64"></label>
+        <label>FINE:<input type="number" id="smpFine" min="-8" max="7" value="0"></label>
+        <label>LP.S:<input type="number" id="smpLpS" min="0" value="0"></label>
+        <label>LP.L:<input type="number" id="smpLpL" min="0" value="0"></label>
+      </div>
+      <div class="drop-zone" id="sampleDropZone">
+        <label style="cursor:pointer;display:block">
+          📁 DROP WAV/MP3 OR CLICK
+          <input type="file" id="sampleFileInput" accept=".wav,.mp3,.ogg,.flac,.aiff">
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Order + Operations -->
+  <div class="panel">
+    <h3>PATTERN ORDER <span class="badge">LEN: <span id="songLenD">01</span></span></h3>
+    <div class="order-display" id="orderDisplay"></div>
+    <div class="mute-strip" id="muteStrip"></div>
+    <div class="key-hint" style="margin-top:4px">
+      <kbd>Space</kbd> Edit &nbsp; <kbd>Enter</kbd> Play &nbsp; <kbd>Esc</kbd> Stop &nbsp;
+      <kbd>F1</kbd> Help<br>
+      <kbd>Ctrl+C/V</kbd> Copy/Paste &nbsp; <kbd>Ctrl+Z/Y</kbd> Undo/Redo<br>
+      <kbd>Shift+F1/F2</kbd> Transpose ±1 &nbsp; <kbd>Shift+F3/F4</kbd> ±12<br>
+      <kbd>F7</kbd> Mute Ch &nbsp; <kbd>F8</kbd> Solo Ch &nbsp; <kbd>+/-</kbd> Pat at pos
+    </div>
+  </div>
+
+  <!-- Status -->
+  <div class="panel">
+    <h3>STATUS</h3>
+    <div class="editor-status">
+      <div class="status-item"><span class="lbl">OCT:</span><span class="val" id="dOct">2</span></div>
+      <div class="status-item"><span class="lbl">STP:</span><span class="val" id="dStp">1</span></div>
+      <div class="status-item"><span class="lbl">POS:</span><span class="val" id="dPos">00</span></div>
+      <div class="status-item"><span class="lbl">PAT:</span><span class="val" id="dPat">00</span></div>
+      <div class="status-item"><span class="lbl">ROW:</span><span class="val" id="dRow">00</span></div>
+      <div class="status-item"><span class="lbl">CHN:</span><span class="val" id="dChn">1</span></div>
+      <div class="status-item"><span class="lbl">SPD:</span><span class="val" id="dSpd">06</span></div>
+      <div class="status-item"><span class="lbl">BPM:</span><span class="val" id="dBpm">125</span></div>
+      <div class="edit-indicator edit-off" id="editInd">PLAY MODE</div>
+    </div>
+  </div>
+</div>
+
+<!-- PATTERN EDITOR -->
+<div class="panel pattern-view">
+  <canvas id="trackerCanvas" width="1100" height="380"></canvas>
+  <div class="cursor-line"></div>
+  <div class="selection-info" id="selInfo"></div>
+</div>
+
+<!-- BOTTOM DECK -->
+<div class="bottom-deck">
+  <div class="scopes" id="scopeBox"></div>
+  <div class="controls">
+    <label class="file-btn">📂 LOAD<input type="file" id="fileInput" accept=".mod"></label>
+    <button id="btnSave" class="file-btn" style="background:#006622;border-color:#22aa44">💾 SAVE MOD</button>
+    <button id="btnNew">NEW</button>
+    <button id="btnBrowse">BROWSE</button>
+    <button id="btnRadio">RADIO</button>
+    <button id="btnPlay">▶ PLAY</button>
+    <button id="btnStop">■ STOP</button>
+  </div>
+</div>
+
+</div><!-- tracker-ui -->
+</div><!-- screen -->
+</div><!-- monitor -->
+
+<!-- Browse Overlay -->
+<div id="browseOverlay">
+<button class="browse-close" id="browseClose">&times;</button>
+<h2>MOD ARCHIVE BROWSER</h2>
+<div class="browse-toolbar">
+  <input type="text" id="browseSearch" placeholder="Search modules or artists..." spellcheck="false">
+  <select id="browseMode" style="width:90px">
+    <option value="module">MODULES</option>
+    <option value="artist">ARTISTS</option>
+  </select>
+  <button id="browseSearchBtn">SEARCH</button>
+  <button id="browseRandomBtn">RANDOM</button>
+</div>
+<div class="browse-header">
+  <span>TITLE / FILENAME</span>
+  <span>ARTIST</span>
+  <span>GENRE</span>
+  <span style="text-align:right">SIZE</span>
+</div>
+<div class="browse-results" id="browseResults"></div>
+<div class="browse-status" id="browseStatus">Search the Mod Archive (min 3 chars)</div>
+<div class="browse-pager" id="browsePager" style="display:none">
+  <button id="pagePrev">&lt; PREV</button>
+  <span id="pageInfo">1 / 1</span>
+  <button id="pageNext">NEXT &gt;</button>
+</div>
+</div>
+
+<!-- Help Overlay -->
+<div id="helpOverlay">
+<h2>⌨️ KEYBOARD REFERENCE</h2>
+<div class="cols">
+<div>
+  <h3>EDITING</h3>
+  <p><kbd>Space</kbd> Toggle Edit Mode</p>
+  <p><kbd>Z-M</kbd> Notes (lower octave)</p>
+  <p><kbd>Q-P</kbd> Notes (upper octave)</p>
+  <p><kbd>0-9/A-F</kbd> Hex in effect cols</p>
+  <p><kbd>Del</kbd> Clear cell</p>
+  <p><kbd>Backspace</kbd> Delete & pull up</p>
+  <p><kbd>Insert</kbd> Insert empty row</p>
+  <p><kbd>Ctrl+Z</kbd> Undo</p>
+  <p><kbd>Ctrl+Y</kbd> Redo</p>
+</div>
+<div>
+  <h3>NAVIGATION</h3>
+  <p><kbd>↑↓←→</kbd> Move cursor</p>
+  <p><kbd>Tab/Shift+Tab</kbd> Next/Prev channel</p>
+  <p><kbd>PgUp/PgDn</kbd> ±16 rows</p>
+  <p><kbd>Home/End</kbd> First/Last row</p>
+  <p><kbd>F2-F5</kbd> Jump to ch 1-4</p>
+  <p><kbd>Ctrl+↑↓</kbd> Prev/Next order pos</p>
+</div>
+<div>
+  <h3>BLOCK OPERATIONS</h3>
+  <p><kbd>Shift+↑↓</kbd> Select block</p>
+  <p><kbd>Ctrl+C</kbd> Copy selection</p>
+  <p><kbd>Ctrl+V</kbd> Paste</p>
+  <p><kbd>Ctrl+X</kbd> Cut</p>
+  <p><kbd>Shift+F1</kbd> Transpose -1 semitone</p>
+  <p><kbd>Shift+F2</kbd> Transpose +1 semitone</p>
+  <p><kbd>Shift+F3</kbd> Transpose -1 octave</p>
+  <p><kbd>Shift+F4</kbd> Transpose +1 octave</p>
+</div>
+<div>
+  <h3>CHANNELS & PLAYBACK</h3>
+  <p><kbd>F7</kbd> Toggle mute channel</p>
+  <p><kbd>F8</kbd> Solo channel</p>
+  <p><kbd>Enter</kbd> Play from cursor</p>
+  <p><kbd>Esc</kbd> Stop</p>
+  <p><kbd>Shift+↑↓</kbd> (no sel) Sample ±1</p>
+  <p><kbd>Ctrl+1-3</kbd> Set octave</p>
+  <p><kbd>Alt+0-9</kbd> Set step</p>
+  <p><kbd>F6</kbd> New pattern</p>
+  <p><kbd>+/-</kbd> Pattern at order pos</p>
+</div>
+</div>
+<p style="text-align:center;margin-top:12px;color:#446">Press <kbd>F1</kbd> or <kbd>Esc</kbd> to close</p>
+</div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
