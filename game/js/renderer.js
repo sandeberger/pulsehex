@@ -2,6 +2,7 @@
 
 import { TAU, lerpAngle } from './math.js';
 import { ObstacleType } from './obstacles.js';
+import { Save } from './save.js';
 
 export class Renderer {
   constructor(canvas, viewport, arena, palette, effects) {
@@ -341,6 +342,13 @@ export class Renderer {
         c.fillText('x' + score.multiplier.toFixed(2), w / 2, 62);
       }
 
+      // Pause hint top-right
+      c.font = '12px monospace';
+      c.fillStyle = 'rgba(255,255,255,0.2)';
+      c.textAlign = 'right';
+      c.fillText('ESC', w - 12, 20);
+      c.textAlign = 'center';
+
       // Track name + difficulty small at bottom
       if (extras && extras.currentTrack) {
         c.font = '11px monospace';
@@ -349,32 +357,64 @@ export class Renderer {
         c.fillText(extras.currentTrack.title + '  [' + diffLabel + ']', w / 2, h - 20);
       }
 
+    } else if (state === 'PAUSED') {
+      // Dim overlay
+      c.fillStyle = 'rgba(0,0,0,0.6)';
+      c.fillRect(0, 0, w, h);
+
+      c.font = 'bold 36px monospace';
+      c.fillStyle = '#fff';
+      c.fillText('PAUSED', w / 2, h * 0.35);
+
+      c.font = '16px monospace';
+      c.fillStyle = 'rgba(255,255,255,0.6)';
+      c.fillText('TAP or press any key to resume', w / 2, h * 0.50);
+
+      c.font = '14px monospace';
+      c.fillStyle = 'rgba(255,255,255,0.35)';
+      c.fillText('ESC / tap top to quit', w / 2, h * 0.57);
+
     } else if (state === 'DEAD') {
       c.font = 'bold 36px monospace';
       c.fillStyle = '#fff';
       c.fillText('GAME OVER', w / 2, h * 0.35);
 
     } else if (state === 'RESULT') {
+      const isNewBest = extras && extras.isNewBest;
+      const saved = extras && extras.saved;
+
       c.font = 'bold 36px monospace';
       c.fillStyle = '#fff';
-      c.fillText('GAME OVER', w / 2, h * 0.3);
+      c.fillText('GAME OVER', w / 2, h * 0.25);
 
+      // Score
       c.font = 'bold 28px monospace';
-      c.fillText(Math.floor(score.current).toString(), w / 2, h * 0.4);
+      c.fillText(Math.floor(score.current).toString(), w / 2, h * 0.36);
+
+      // NEW BEST badge
+      if (isNewBest) {
+        c.font = 'bold 16px monospace';
+        c.fillStyle = 'rgba(255,220,50,1.0)';
+        c.fillText('\u2605 NEW BEST! \u2605', w / 2, h * 0.43);
+      } else if (saved && saved.bestScore > 0) {
+        c.font = '14px monospace';
+        c.fillStyle = 'rgba(255,255,255,0.4)';
+        c.fillText('BEST: ' + saved.bestScore, w / 2, h * 0.43);
+      }
 
       if (score.nearMissCount > 0) {
         c.font = '14px monospace';
         c.fillStyle = 'rgba(255,200,50,0.7)';
-        c.fillText('Near misses: ' + score.nearMissCount, w / 2, h * 0.47);
+        c.fillText('Near misses: ' + score.nearMissCount, w / 2, h * 0.50);
       }
 
       c.font = '18px monospace';
       c.fillStyle = 'rgba(255,255,255,0.6)';
-      c.fillText('TAP TO RETRY', w / 2, h * 0.55);
+      c.fillText('TAP TO RETRY', w / 2, h * 0.60);
 
       c.font = '13px monospace';
       c.fillStyle = 'rgba(255,255,255,0.3)';
-      c.fillText('ESC for track select', w / 2, h * 0.62);
+      c.fillText('ESC for track select', w / 2, h * 0.66);
     }
   }
 
@@ -443,13 +483,24 @@ export class Renderer {
       c.fillStyle = isSelected ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.3)';
       c.fillText(t.mood + '  ' + stars(t.difficulty), w * 0.10, y + 14);
 
-      // Auto/curated badge
+      // Right side: highscore + badge
       c.textAlign = 'right';
+
+      // Best score for current difficulty
+      const diffIds = extras.diffIds || ['easy','normal','hard'];
+      const best = Save.getBestForTrack(t.id, diffIds);
+      if (best) {
+        c.font = '12px monospace';
+        c.fillStyle = isSelected ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.3)';
+        c.fillText(best.score.toString(), w * 0.92, y - 4);
+      }
+
+      // Auto/curated badge
       c.font = '10px monospace';
       c.fillStyle = t.chart
         ? 'rgba(100,255,150,0.5)'
         : 'rgba(255,200,80,0.5)';
-      c.fillText(t.chart ? 'CURATED' : 'AUTO', w * 0.92, y - 4);
+      c.fillText(t.chart ? 'CURATED' : 'AUTO', w * 0.92, y + 14);
 
       c.textAlign = 'center';
     }
