@@ -3,6 +3,7 @@
 import { TAU, normalizeAngle, angleDiff } from './math.js';
 import { ObstacleType } from './obstacles.js';
 import { patterns, randomizeGapAngles, resetLastGap } from './pattern-library.js';
+import { current as difficulty } from './difficulty.js';
 
 // Safety margin — player shouldn't need pixel-perfect timing
 const SAFETY = 0.85;
@@ -75,7 +76,8 @@ export class Spawner {
 
   loadChart(chart) {
     this.chart = chart;
-    this.spawnLeadBeats = chart.spawnLeadBeats || 4;
+    // Use chart's lead beats, but allow difficulty to override
+    this.spawnLeadBeats = difficulty.spawnLeadBeats || chart.spawnLeadBeats || 6;
     this._chartIdx = 0;
   }
 
@@ -125,6 +127,8 @@ export class Spawner {
     const hitbox = this.player ? this.player.hitboxHalfArc : 0.05;
     const maxReach = angularSpeed * travelTime;
 
+    const gs = difficulty.gapScale || 1;
+
     const obs = this.pool.acquire(pat.type);
     obs.radius = this.arena.outerRadius;
     obs.startRadius = this.arena.outerRadius;
@@ -138,7 +142,7 @@ export class Spawner {
       } else {
         obs.gapAngles = randomizeGapAngles(pat.gaps || 1, undefined, playerAngle, maxReach);
       }
-      obs.gapHalfWidth = pat.gapHalfWidth || 0.3;
+      obs.gapHalfWidth = (pat.gapHalfWidth || 0.3) * gs;
 
       // --- Reachability check against previous gap-obstacle ---
       this._validateReachability(obs.gapAngles, obs.gapHalfWidth, angularSpeed, hitbox);
@@ -167,7 +171,7 @@ export class Spawner {
 
     } else if (pat.type === ObstacleType.ROTATING_GATE) {
       obs.gapAngles = randomizeGapAngles(pat.gaps || 1, undefined, playerAngle, maxReach);
-      obs.gapHalfWidth = pat.gapHalfWidth || 0.4;
+      obs.gapHalfWidth = (pat.gapHalfWidth || 0.4) * gs;
       obs.gateRotationSpeed = pat.gateRotationSpeed || TAU * 0.1;
 
       this._validateReachability(obs.gapAngles, obs.gapHalfWidth, angularSpeed, hitbox);
@@ -189,7 +193,7 @@ export class Spawner {
 
     } else if (pat.type === ObstacleType.PULSE_RING) {
       obs.safeAngles = randomizeGapAngles(pat.safeZones || 1, undefined, playerAngle, maxReach);
-      obs.safeHalfWidth = pat.safeHalfWidth || 0.3;
+      obs.safeHalfWidth = (pat.safeHalfWidth || 0.3) * gs;
 
       this._validateReachability(obs.safeAngles, obs.safeHalfWidth, angularSpeed, hitbox);
 

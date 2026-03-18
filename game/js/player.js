@@ -1,6 +1,7 @@
 "use strict";
 
 import { TAU, normalizeAngle } from './math.js';
+import { current as difficulty } from './difficulty.js';
 
 const TRAIL_LENGTH = 20;
 
@@ -33,5 +34,6 @@ export class Player {
     this.prevAngle = 0;
     this.trail.length = 0;
     this.alive = true;
+    this.hitboxHalfArc = difficulty.hitboxHalfArc || 0.05;
   }
 }

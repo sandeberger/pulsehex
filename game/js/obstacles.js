@@ -1,6 +1,7 @@
 "use strict";
 
 import { TAU, normalizeAngle } from './math.js';
+import { current as difficulty } from './difficulty.js';
 
 export const ObstacleType = {
   GAP_WALL: 0,
@@ -98,12 +99,13 @@ export class ObstaclePool {
       const obs = this.pool[i];
       if (!obs.active) continue;
 
-      // Ease-in: 25% speed at outer edge → 100% at orbit
+      // Ease-in: slow at outer edge → full speed at orbit
+      const easeMin = difficulty.speedEaseMin || 0.25;
       const totalDist = obs.startRadius - orbitRadius;
       const progress = totalDist > 0
-        ? 1 - (obs.radius - orbitRadius) / totalDist  // 0 at spawn → 1 at orbit
+        ? 1 - (obs.radius - orbitRadius) / totalDist
         : 1;
-      const speedFactor = 0.25 + 0.75 * Math.min(Math.max(progress, 0), 1);
+      const speedFactor = easeMin + (1 - easeMin) * Math.min(Math.max(progress, 0), 1);
       obs.radius -= obs.speed * speedFactor * dt;
 
       if (obs.type === ObstacleType.SWEEP_BEAM) {

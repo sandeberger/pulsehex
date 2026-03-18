@@ -341,11 +341,12 @@ export class Renderer {
         c.fillText('x' + score.multiplier.toFixed(2), w / 2, 62);
       }
 
-      // Track name small at bottom
+      // Track name + difficulty small at bottom
       if (extras && extras.currentTrack) {
         c.font = '11px monospace';
         c.fillStyle = 'rgba(255,255,255,0.25)';
-        c.fillText(extras.currentTrack.title, w / 2, h - 20);
+        const diffLabel = extras.difficulty ? extras.difficulty.label : '';
+        c.fillText(extras.currentTrack.title + '  [' + diffLabel + ']', w / 2, h - 20);
       }
 
     } else if (state === 'DEAD') {
@@ -381,11 +382,33 @@ export class Renderer {
     if (!extras || !extras.tracks) return;
     const trackList = extras.tracks;
     const sel = extras.selectedTrackIdx || 0;
+    const presets = extras.presets || [];
+    const diffIdx = extras.selectedDiffIdx || 0;
+
+    // --- Difficulty selector ---
+    const diffY = h * 0.08;
+    const diffW = w * 0.28;
+    const diffColors = ['rgba(80,220,120,', 'rgba(220,200,60,', 'rgba(255,80,80,'];
+
+    for (let i = 0; i < presets.length; i++) {
+      const dx = w / 2 + (i - 1) * diffW;
+      const isActive = i === diffIdx;
+
+      c.font = isActive ? 'bold 15px monospace' : '13px monospace';
+      c.fillStyle = diffColors[i] + (isActive ? '1.0)' : '0.35)');
+      c.fillText(presets[i].label, dx, diffY);
+
+      if (isActive) {
+        // Underline
+        const tw = c.measureText(presets[i].label).width;
+        c.fillRect(dx - tw / 2, diffY + 10, tw, 2);
+      }
+    }
 
     // Title
-    c.font = 'bold 28px monospace';
+    c.font = 'bold 22px monospace';
     c.fillStyle = '#fff';
-    c.fillText('SELECT TRACK', w / 2, h * 0.12);
+    c.fillText('SELECT TRACK', w / 2, h * 0.17);
 
     // Difficulty stars helper
     const stars = (n) => '\u2605'.repeat(n) + '\u2606'.repeat(3 - n);
@@ -435,6 +458,6 @@ export class Renderer {
     c.textAlign = 'center';
     c.font = '13px monospace';
     c.fillStyle = 'rgba(255,255,255,0.35)';
-    c.fillText('Tap track or UP/DOWN + ENTER', w / 2, h * 0.88);
+    c.fillText('\u2190\u2192 difficulty  |  \u2191\u2193 track  |  ENTER play', w / 2, h * 0.88);
   }
 }

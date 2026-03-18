@@ -16,6 +16,7 @@ import { Effects } from './effects.js';
 import { Score } from './score.js';
 import { tracks } from './tracks.js';
 import { generateChart } from './chart-generator.js';
+import { PRESETS, current as difficulty, setDifficulty } from './difficulty.js';
 
 // --- Constants ---
 const FIXED_DT = 1 / 120; // 120 Hz logic
@@ -42,6 +43,7 @@ let deadTimer = 0;
 let sectionIdx = 0;
 let profile = null;
 let selectedTrackIdx = 0;
+let selectedDiffIdx = 1; // default: NORMAL (index 1 in PRESETS)
 
 // --- Bootstrap ---
 window.addEventListener('DOMContentLoaded', init);
@@ -100,6 +102,14 @@ function onKeyAction(e) {
     } else if (e.code === 'ArrowDown' || e.code === 'KeyS') {
       e.preventDefault();
       selectedTrackIdx = (selectedTrackIdx + 1) % tracks.length;
+    } else if (e.code === 'ArrowLeft' || e.code === 'KeyA') {
+      e.preventDefault();
+      selectedDiffIdx = (selectedDiffIdx - 1 + PRESETS.length) % PRESETS.length;
+      setDifficulty(PRESETS[selectedDiffIdx]);
+    } else if (e.code === 'ArrowRight' || e.code === 'KeyD') {
+      e.preventDefault();
+      selectedDiffIdx = (selectedDiffIdx + 1) % PRESETS.length;
+      setDifficulty(PRESETS[selectedDiffIdx]);
     } else if (e.code === 'Enter' || e.code === 'Space') {
       e.preventDefault();
       startLoading(tracks[selectedTrackIdx]);
@@ -129,12 +139,25 @@ function onTapAction(e) {
 }
 
 function handleTrackSelectTap(e) {
-  // Figure out which track was tapped based on Y position
   const y = e.clientY || (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+  const x = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
   const h = viewport.height;
+  const w = viewport.width;
+
+  // Difficulty selector zone (top area, y < 0.22)
+  if (y < h * 0.22) {
+    // Cycle difficulty based on which third of the screen was tapped
+    const zone = Math.floor(x / (w / 3));
+    if (zone >= 0 && zone < PRESETS.length) {
+      selectedDiffIdx = zone;
+      setDifficulty(PRESETS[selectedDiffIdx]);
+    }
+    return;
+  }
+
+  // Track list
   const listTop = h * 0.25;
   const rowHeight = h * 0.10;
-
   const idx = Math.floor((y - listTop) / rowHeight);
   if (idx >= 0 && idx < tracks.length) {
     selectedTrackIdx = idx;
@@ -241,5 +264,8 @@ function die() {
 }
 
 function render(alpha) {
-  renderer.draw(state, player, pool, score, alpha, { tracks, selectedTrackIdx, currentTrack });
+  renderer.draw(state, player, pool, score, alpha, {
+    tracks, selectedTrackIdx, currentTrack,
+    difficulty, selectedDiffIdx, presets: PRESETS
+  });
 }

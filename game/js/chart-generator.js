@@ -1,46 +1,41 @@
 "use strict";
 
+import { current as difficulty } from './difficulty.js';
+
 /**
  * Auto-generates a playable chart from SongAnalyzer output.
- *
- * Pipeline:
- *  1. Smooth the raw energy curve
- *  2. Normalize to 0–1
- *  3. Classify sections by energy (quiet / groove / build / peak)
- *  4. Place obstacles at beat intervals proportional to energy
- *  5. Select patterns from tiered pools matching section intensity
+ * Reads difficulty.intervalScale and difficulty.maxTier at generation time.
  */
 
 // --- Pattern tiers (easiest → hardest) ---
 
-const TIER_1 = [
-  'gap-wall-single',
-  'gap-wall-single',
-  'pulse-ring-easy',
-];
-
-const TIER_2 = [
-  'gap-wall-double',
-  'rotating-gate-slow',
-  'sweep-beam-slow',
-  'pulse-ring-easy',
-];
-
-const TIER_3 = [
-  'gap-wall-narrow',
-  'rotating-gate-fast',
-  'double-wall-offset',
-  'orbit-blocker-short',
-  'sweep-beam-slow',
-];
-
-const TIER_4 = [
-  'rotating-gate-reverse',
-  'sweep-beam-fast',
-  'pulse-ring-hard',
-  'orbit-blocker-wide',
-  'pressure-wall',
-  'rotating-gate-fast',
+const TIERS = [
+  /* 1 */ [
+    'gap-wall-single',
+    'gap-wall-single',
+    'pulse-ring-easy',
+  ],
+  /* 2 */ [
+    'gap-wall-double',
+    'rotating-gate-slow',
+    'sweep-beam-slow',
+    'pulse-ring-easy',
+  ],
+  /* 3 */ [
+    'gap-wall-narrow',
+    'rotating-gate-fast',
+    'double-wall-offset',
+    'orbit-blocker-short',
+    'sweep-beam-slow',
+  ],
+  /* 4 */ [
+    'rotating-gate-reverse',
+    'sweep-beam-fast',
+    'pulse-ring-hard',
+    'orbit-blocker-wide',
+    'pressure-wall',
+    'rotating-gate-fast',
+  ],
 ];
 
 // Alternating lane pairs — injected as two events
@@ -50,16 +45,12 @@ const ALT_LANE_PAIR = ['alt-lane-A', 'alt-lane-B'];
 const QUIET_MAX   = 0.20;
 const GROOVE_MAX  = 0.45;
 const BUILD_MAX   = 0.70;
-// Above BUILD_MAX → peak
 
-// Beat intervals per intensity (how many beats between spawns)
+// Base beat intervals per intensity
 const INTERVAL_QUIET  = 16;
 const INTERVAL_GROOVE = 10;
 const INTERVAL_BUILD  = 7;
 const INTERVAL_PEAK   = 5;
-
-// Minimum beats between any two obstacles (fairness floor)
-const MIN_SPACING = 4;
 
 // Smoothing window for energy (in rows)
 const SMOOTH_WINDOW = 16;
@@ -108,30 +99,39 @@ function classifyEnergy(e) {
 }
 
 function intervalForClass(cls) {
+  const scale = difficulty.intervalScale || 1;
   switch (cls) {
-    case 'quiet':  return INTERVAL_QUIET;
-    case 'groove': return INTERVAL_GROOVE;
-    case 'build':  return INTERVAL_BUILD;
-    case 'peak':   return INTERVAL_PEAK;
-    default:       return INTERVAL_GROOVE;
+    case 'quiet':  return Math.round(INTERVAL_QUIET  * scale);
+    case 'groove': return Math.round(INTERVAL_GROOVE * scale);
+    case 'build':  return Math.round(INTERVAL_BUILD  * scale);
+    case 'peak':   return Math.round(INTERVAL_PEAK   * scale);
+    default:       return Math.round(INTERVAL_GROOVE * scale);
   }
 }
 
 function tierForClass(cls) {
+  const max = Math.min(difficulty.maxTier || 4, TIERS.length);
+  let tierIdx;
   switch (cls) {
-    case 'quiet':  return TIER_1;
-    case 'groove': return TIER_2;
-    case 'build':  return TIER_3;
-    case 'peak':   return TIER_4;
-    default:       return TIER_2;
+    case 'quiet':  tierIdx = 0; break;
+    case 'groove': tierIdx = 1; break;
+    case 'build':  tierIdx = 2; break;
+    case 'peak':   tierIdx = 3; break;
+    default:       tierIdx = 1;
   }
+  // Clamp to the max tier allowed by difficulty
+  tierIdx = Math.min(tierIdx, max - 1);
+  return TIERS[tierIdx];
 }
 
 // --- Generator ---
 
 export function generateChart(profile, modFile) {
+  const leadBeats = difficulty.spawnLeadBeats || 6;
+  const minSpacing = difficulty.minSpacing || 4;
+
   if (!profile || !profile.energyCurve || profile.energyCurve.length === 0) {
-    return { modFile, bpmRef: 125, spawnLeadBeats: 6, events: [] };
+    return { modFile, bpmRef: 125, spawnLeadBeats: leadBeats, events: [] };
   }
 
   const raw = profile.energyCurve;
@@ -140,7 +140,7 @@ export function generateChart(profile, modFile) {
   const totalRows = energy.length;
 
   const events = [];
-  let lastBeat = -MIN_SPACING;
+  let lastBeat = -minSpacing;
   let spiralCooldown = 0;
   let altLaneCooldown = 0;
 
@@ -155,7 +155,7 @@ export function generateChart(profile, modFile) {
     const interval = intervalForClass(cls);
 
     // Enforce minimum spacing
-    if (beat - lastBeat < MIN_SPACING) {
+    if (beat - lastBeat < minSpacing) {
       beat++;
       continue;
     }
@@ -207,7 +207,7 @@ export function generateChart(profile, modFile) {
 
     // Advance by interval (with slight random jitter for musicality)
     const jitter = Math.floor(Math.random() * 3) - 1; // -1, 0, or +1
-    beat += Math.max(MIN_SPACING, interval + jitter);
+    beat += Math.max(minSpacing, interval + jitter);
   }
 
   // Sort by beat (alt-lane pairs and spirals may have shifted things)
@@ -216,7 +216,7 @@ export function generateChart(profile, modFile) {
   return {
     modFile: modFile || '',
     bpmRef: 125,
-    spawnLeadBeats: 6,
+    spawnLeadBeats: leadBeats,
     events
   };
 }
